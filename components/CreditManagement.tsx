@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { 
   Search, 
@@ -426,7 +425,7 @@ const CreditManagement: React.FC<CreditManagementProps> = ({ buyers, transaction
             onClick={() => setStatusFilter('NEAR')}
             className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${statusFilter === 'NEAR' ? 'bg-amber-500 text-white shadow-md' : 'bg-amber-50 text-amber-600 hover:bg-amber-100'}`}
            >
-             Near-Limit (>80%)
+             Near-Limit (&gt;80%)
            </button>
            <button 
             onClick={() => setStatusFilter('HEALTHY')}

@@ -1,0 +1,7 @@
+{
+  "name": "Osaka ERP - Multi-Branch Management System",
+  "description": "A comprehensive multi-branch ERP for wholesale and retail, featuring POS, credit control, expense tracking, and AI-powered business insights.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

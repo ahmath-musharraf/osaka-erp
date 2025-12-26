@@ -51,7 +51,6 @@ const POS: React.FC<POSProps> = ({ branch, items, buyers, onTransaction, onAddBu
   const [discount, setDiscount] = useState<string>('0');
   const [showBillPreview, setShowBillPreview] = useState<Transaction | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isAddingBuyer, setIsAddingBuyer] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -111,12 +110,6 @@ const POS: React.FC<POSProps> = ({ branch, items, buyers, onTransaction, onAddBu
   const handleCompleteSale = () => {
     if (cart.length === 0) return;
     
-    if (paymentMethod === PaymentMethod.CREDIT && (posMode === 'RETAIL' || !selectedBuyer)) {
-      alert("Credit sales are restricted to Wholesale Partners with a profile.");
-      setPaymentMethod(PaymentMethod.CASH);
-      return;
-    }
-
     setIsProcessing(true);
 
     setTimeout(() => {
@@ -157,6 +150,24 @@ const POS: React.FC<POSProps> = ({ branch, items, buyers, onTransaction, onAddBu
     }, 800);
   };
 
+  const generateShareText = (t: Transaction) => {
+    const currentBuyer = buyers.find(b => b.id === t.buyerId);
+    const itemsSummary = t.items.map(si => {
+      const item = items.find(i => i.id === si.itemId);
+      return `• ${item?.name} x ${si.quantity}: Rs.${(si.price * si.quantity).toLocaleString()}`;
+    }).join('\n');
+
+    return `🧾 *OSAKA GROUP INVOICE*\n\n` +
+      `ID: #${t.id.toUpperCase()}\n` +
+      `Date: ${new Date(t.timestamp).toLocaleDateString()}\n` +
+      `Branch: ${t.branch}\n\n` +
+      `*Items:*\n${itemsSummary}\n\n` +
+      `*Total: Rs. ${t.totalAmount.toLocaleString()}*\n` +
+      `Paid: Rs. ${t.paidAmount.toLocaleString()}\n` +
+      `Balance: Rs. ${(t.totalAmount - t.paidAmount).toLocaleString()}\n\n` +
+      `Thank you for your business!`;
+  };
+
   const handleSendWhatsApp = () => {
     if (!showBillPreview) return;
     const currentBuyer = buyers.find(b => b.id === showBillPreview.buyerId);
@@ -167,37 +178,32 @@ const POS: React.FC<POSProps> = ({ branch, items, buyers, onTransaction, onAddBu
       return;
     }
 
-    const itemsSummary = showBillPreview.items.map(si => {
-      const item = items.find(i => i.id === si.itemId);
-      return `• ${item?.name} x ${si.quantity}: Rs.${(si.price * si.quantity).toLocaleString()}`;
-    }).join('\n');
-
-    const msg = `🧾 *OSAKA GROUP INVOICE*\n\n` +
-      `ID: #${showBillPreview.id.toUpperCase()}\n` +
-      `Date: ${new Date(showBillPreview.timestamp).toLocaleDateString()}\n` +
-      `Branch: ${showBillPreview.branch}\n\n` +
-      `*Items:*\n${itemsSummary}\n\n` +
-      `*Total: Rs. ${showBillPreview.totalAmount.toLocaleString()}*\n` +
-      `Paid: Rs. ${showBillPreview.paidAmount.toLocaleString()}\n` +
-      `Balance: Rs. ${(showBillPreview.totalAmount - showBillPreview.paidAmount).toLocaleString()}\n\n` +
-      `Thank you for your business!`;
-
+    const msg = generateShareText(showBillPreview);
     window.open(`https://wa.me/${targetPhone.replace(/\+/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
-  const handleQuickAddBuyer = (e: React.FormEvent) => {
-    e.preventDefault();
-    // Simplified add logic for brevity
-    setIsAddingBuyer(false);
+  const handleNativeShare = async () => {
+    if (!showBillPreview) return;
+    const shareText = generateShareText(showBillPreview);
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `Osaka Invoice #${showBillPreview.id}`,
+          text: shareText,
+        });
+      } catch (err) {
+        console.error("Share failed:", err);
+      }
+    } else {
+      // Fallback to copy to clipboard
+      navigator.clipboard.writeText(shareText);
+      alert("Summary copied to clipboard!");
+    }
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => setBillImage(reader.result as string);
-      reader.readAsDataURL(file);
-    }
+  const handlePrint = () => {
+    window.print();
   };
 
   const paymentIcons = {
@@ -210,7 +216,7 @@ const POS: React.FC<POSProps> = ({ branch, items, buyers, onTransaction, onAddBu
   return (
     <div className="flex h-[calc(100vh-140px)] gap-6 overflow-hidden font-['Inter']">
       
-      {/* Left Column */}
+      {/* Left Column: Product Selection */}
       <div className="flex-1 flex flex-col gap-6 overflow-hidden">
         <div className="bg-white p-4 rounded-[2rem] shadow-sm border border-slate-100 flex items-center gap-4">
           <div className="flex-1 relative">
@@ -259,7 +265,7 @@ const POS: React.FC<POSProps> = ({ branch, items, buyers, onTransaction, onAddBu
               className="bg-white p-3 rounded-[2rem] border border-slate-100 hover:border-blue-500 hover:shadow-xl transition-all cursor-pointer group flex flex-col relative active:scale-[0.98]"
             >
               <div className="aspect-[4/5] rounded-[1.5rem] overflow-hidden bg-slate-50 mb-4 relative">
-                <img src={item.images[0]} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+                <img src={item.images[0]} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={item.name} />
                 <div className={`absolute top-3 right-3 px-2 py-1 rounded-lg text-[8px] font-black uppercase shadow-sm ${item.stock < 10 ? 'bg-red-500 text-white' : 'bg-white/95 text-slate-900'}`}>
                   Qty: {item.stock}
                 </div>
@@ -282,8 +288,7 @@ const POS: React.FC<POSProps> = ({ branch, items, buyers, onTransaction, onAddBu
       </div>
 
       {/* Right Column: Terminal Cart */}
-      <div className="w-[380px] flex flex-col bg-white rounded-[3rem] shadow-2xl border border-slate-100 overflow-hidden">
-        
+      <div className="w-[380px] flex flex-col bg-white rounded-[3rem] shadow-2xl border border-slate-100 overflow-hidden print:hidden">
         <div className="p-6 border-b border-slate-50 flex items-center justify-between bg-white">
           <div className="flex items-center gap-3">
              <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-600/20">
@@ -291,7 +296,7 @@ const POS: React.FC<POSProps> = ({ branch, items, buyers, onTransaction, onAddBu
              </div>
              <div>
                 <h3 className="text-sm font-black text-slate-900 leading-none">Terminal Cart</h3>
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Osaka Node 0{branch.slice(-1)}</p>
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Osaka Node {branch.slice(-1)}</p>
              </div>
           </div>
         </div>
@@ -319,7 +324,7 @@ const POS: React.FC<POSProps> = ({ branch, items, buyers, onTransaction, onAddBu
             cart.map(({ item, quantity }) => (
               <div key={item.id} className="flex gap-3 items-center p-3 rounded-2xl border border-slate-50 hover:border-blue-100 transition-all bg-white group/row">
                 <div className="w-12 h-12 rounded-xl bg-slate-50 overflow-hidden border border-slate-100 flex-shrink-0">
-                   <img src={item.images[0]} className="w-full h-full object-cover" />
+                   <img src={item.images[0]} className="w-full h-full object-cover" alt={item.name} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <h4 className="text-[11px] font-black text-slate-800 truncate leading-none mb-1">{item.name}</h4>
@@ -386,7 +391,7 @@ const POS: React.FC<POSProps> = ({ branch, items, buyers, onTransaction, onAddBu
                 >
                   {paymentIcons[method]}
                   <span className="text-[8px] font-black uppercase tracking-tighter">
-                    {isCreditRestricted ? 'Restricted' : method}
+                    {method}
                   </span>
                 </button>
               );
@@ -394,7 +399,14 @@ const POS: React.FC<POSProps> = ({ branch, items, buyers, onTransaction, onAddBu
           </div>
 
           <div className="pt-2">
-            <input type="file" accept="image/*" capture="environment" className="hidden" ref={fileInputRef} onChange={handleImageUpload} />
+            <input type="file" accept="image/*" capture="environment" className="hidden" ref={fileInputRef} onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) {
+                const reader = new FileReader();
+                reader.onloadend = () => setBillImage(reader.result as string);
+                reader.readAsDataURL(file);
+              }
+            }} />
             <button 
               onClick={() => fileInputRef.current?.click()}
               className={`w-full py-4 rounded-2xl border-2 border-dashed flex items-center justify-center gap-3 transition-all ${billImage ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-white/5 border-white/10 text-slate-500'}`}
@@ -420,14 +432,15 @@ const POS: React.FC<POSProps> = ({ branch, items, buyers, onTransaction, onAddBu
 
       {/* Bill Preview Modal */}
       {showBillPreview && (
-        <div className="fixed inset-0 z-[200] bg-black/90 backdrop-blur-xl flex items-center justify-center p-6 animate-in fade-in duration-300">
-           <div className="w-full max-w-4xl max-h-[95vh] overflow-y-auto bg-white rounded-[3rem] shadow-[0_50px_100px_rgba(0,0,0,0.5)] flex flex-col animate-in zoom-in-95 duration-500 scrollbar-hide">
+        <div className="fixed inset-0 z-[200] bg-black/90 backdrop-blur-xl flex items-center justify-center p-6 animate-in fade-in duration-300 print:bg-white print:p-0 print:block">
+           <div className="w-full max-w-4xl max-h-[95vh] overflow-y-auto bg-white rounded-[3rem] shadow-[0_50px_100px_rgba(0,0,0,0.5)] flex flex-col animate-in zoom-in-95 duration-500 scrollbar-hide print:shadow-none print:max-h-none print:w-full print:rounded-none">
+              
               <div className="p-8 border-b border-slate-100 flex justify-between items-center print:hidden bg-slate-50/50 sticky top-0 z-10 backdrop-blur-md">
                  <div className="flex items-center gap-4">
                     <div className="p-4 bg-emerald-500 text-white rounded-2xl shadow-xl shadow-emerald-500/20"><CheckCircle2 size={24} /></div>
                     <div>
-                       <h3 className="text-xl font-black text-slate-900">Order Confirmed</h3>
-                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ready for distribution</p>
+                       <h3 className="text-xl font-black text-slate-900">Invoice Complete</h3>
+                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Share or print records</p>
                     </div>
                  </div>
                  <div className="flex gap-2">
@@ -440,24 +453,29 @@ const POS: React.FC<POSProps> = ({ branch, items, buyers, onTransaction, onAddBu
                       </button>
                     )}
                     <button 
-                      onClick={() => window.print()}
-                      className="px-6 py-4 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 transition-all flex items-center gap-3 text-[10px] font-black uppercase tracking-widest shadow-xl shadow-blue-600/10"
+                      onClick={handleNativeShare}
+                      className="px-6 py-4 bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 transition-all flex items-center gap-3 text-[10px] font-black uppercase tracking-widest shadow-xl shadow-indigo-600/10"
                     >
-                      <Download size={18} /> Download
+                      <Share2 size={18} /> Share
                     </button>
                     <button 
-                      onClick={() => window.print()} 
-                      className="px-6 py-4 bg-slate-950 text-white rounded-2xl hover:bg-slate-800 transition-all flex items-center gap-3 text-[10px] font-black uppercase tracking-widest shadow-xl"
+                      onClick={handlePrint}
+                      className="px-6 py-4 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 transition-all flex items-center gap-3 text-[10px] font-black uppercase tracking-widest shadow-xl shadow-blue-600/10"
                     >
-                      <Printer size={18} /> Print
+                      <Printer size={18} /> Print / Save
                     </button>
                     <button onClick={() => setShowBillPreview(null)} className="p-4 bg-white border border-slate-200 text-slate-400 rounded-2xl hover:text-red-600 transition-all active:scale-90 ml-2">
                       <X size={24} />
                     </button>
                  </div>
               </div>
-              <div className="flex-1 p-10 lg:p-16">
-                <BillTemplate transaction={showBillPreview} buyer={buyers.find(b => b.id === showBillPreview.buyerId)} items={items} />
+
+              <div className="flex-1 p-10 lg:p-16 print:p-0">
+                <BillTemplate 
+                  transaction={showBillPreview} 
+                  buyer={buyers.find(b => b.id === showBillPreview.buyerId)} 
+                  items={items} 
+                />
               </div>
            </div>
         </div>

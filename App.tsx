@@ -32,7 +32,8 @@ import {
   X,
   Smartphone,
   Calendar as CalendarIcon,
-  Clock as ClockIcon
+  Clock as ClockIcon,
+  Database
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -100,7 +101,7 @@ const App: React.FC = () => {
         items,
         expenses,
         buyers,
-        suppliers: suppliers,
+        suppliers,
         cheques,
         auditLogs,
         whatsappLogs
@@ -328,8 +329,8 @@ const App: React.FC = () => {
           <div className="w-24 h-24 border-4 border-blue-600/20 border-t-blue-600 rounded-full animate-spin"></div>
           <Building2 className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-white" size={32} />
         </div>
-        <h2 className="mt-8 text-white font-black uppercase tracking-[0.4em] text-sm animate-pulse">Establishing Cloud Bridge</h2>
-        <p className="text-slate-500 text-[10px] font-bold uppercase mt-2 tracking-widest text-center">Handshaking with Neon PostgreSQL...</p>
+        <h2 className="mt-8 text-white font-black uppercase tracking-[0.4em] text-sm animate-pulse">Establishing Neon Cloud Bridge</h2>
+        <p className="text-slate-500 text-[10px] font-bold uppercase mt-2 tracking-widest text-center">SSL Handshaking with ep-quiet-salad-ahw34wtc...</p>
       </div>
     );
   }
@@ -492,8 +493,8 @@ const App: React.FC = () => {
                </h1>
                <div className="flex items-center gap-3">
                   <div className={`px-4 py-2 rounded-full border text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${syncStatus === 'SYNCED' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : syncStatus === 'SYNCING' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-red-50 text-red-600 border-red-100'}`}>
-                    {syncStatus === 'SYNCING' ? <Loader2 size={14} className="animate-spin" /> : syncStatus === 'SYNCED' ? <Wifi size={14} /> : <WifiOff size={14} />} 
-                    {syncStatus === 'SYNCING' ? 'Database Syncing' : syncStatus === 'SYNCED' ? 'Cloud Connected' : 'Sync Error'}
+                    {syncStatus === 'SYNCING' ? <Loader2 size={14} className="animate-spin" /> : syncStatus === 'SYNCED' ? <Database size={14} /> : <WifiOff size={14} />} 
+                    {syncStatus === 'SYNCING' ? 'Neon Postgres Syncing' : syncStatus === 'SYNCED' ? 'Neon PostgreSQL Connected' : 'Sync Error'}
                   </div>
                   <div className="flex items-center gap-2 bg-white border border-slate-100 rounded-full px-4 py-2 shadow-sm">
                      <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500 border-r border-slate-100 pr-3">

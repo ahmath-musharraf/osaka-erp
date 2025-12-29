@@ -30,7 +30,8 @@ import {
   Camera,
   CheckCircle2,
   FileText,
-  Plus
+  Plus,
+  Trash2
 } from 'lucide-react';
 import { Buyer, Branch, PaymentMethod, Transaction, BuyerPayment } from '../types';
 
@@ -40,10 +41,23 @@ interface CreditManagementProps {
   selectedBranch: Branch;
   onUpdateBuyer: (buyer: Buyer) => void;
   onAddBuyer: (buyer: Buyer) => void;
-  onTransaction?: (t: Transaction) => void; // Optional if you want to sync manual bills back to master
+  onDeleteBuyer: (id: string) => void;
+  onDeleteTransaction?: (id: string) => void;
+  onDeletePayment?: (buyerId: string, paymentId: string) => void;
+  onTransaction?: (t: Transaction) => void; 
 }
 
-const CreditManagement: React.FC<CreditManagementProps> = ({ buyers, transactions, selectedBranch, onUpdateBuyer, onAddBuyer, onTransaction }) => {
+const CreditManagement: React.FC<CreditManagementProps> = ({ 
+  buyers, 
+  transactions, 
+  selectedBranch, 
+  onUpdateBuyer, 
+  onAddBuyer, 
+  onDeleteBuyer, 
+  onDeleteTransaction,
+  onDeletePayment,
+  onTransaction 
+}) => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'OVER' | 'NEAR' | 'HEALTHY'>('ALL');
   const [selectedBuyerId, setSelectedBuyerId] = useState<string | null>(null);
@@ -216,6 +230,26 @@ const CreditManagement: React.FC<CreditManagementProps> = ({ buyers, transaction
     }
   };
 
+  const handleDeletePartner = (id: string, name: string) => {
+    if (window.confirm(`CRITICAL ACTION: Are you sure you want to delete ${name}? This will remove them from the global registry.`)) {
+      onDeleteBuyer(id);
+      setSelectedBuyerId(null);
+    }
+  };
+
+  const handleDeleteHistoryItem = (activity: any) => {
+    const isBill = 'activityType' in activity && activity.activityType === 'BILL';
+    const msg = isBill ? "Delete this Wholesale Invoice and adjust outstanding credit?" : "Delete this Settlement Record and reinstate original debt?";
+    
+    if (window.confirm(`AUDIT ALERT: ${msg}`)) {
+      if (isBill) {
+        onDeleteTransaction?.(activity.id);
+      } else {
+        onDeletePayment?.(selectedBuyer!.id, activity.id);
+      }
+    }
+  };
+
   const sendWhatsAppReminder = (buyer: Buyer) => {
     const phone = buyer.whatsappNumber || buyer.phone;
     const msg = `Hello ${buyer.contactName} from ${buyer.shopName}, reminder from Osaka. Global Credit: Rs. ${buyer.currentCredit.toLocaleString()}. Total Limit: Rs. ${buyer.creditLimit.toLocaleString()}. Please settle dues soon. Thank you!`;
@@ -236,15 +270,23 @@ const CreditManagement: React.FC<CreditManagementProps> = ({ buyers, transaction
           >
             <ArrowLeft size={16} /> Back to Global Ledger
           </button>
-          {isOverLimit && (
-            <div className="flex items-center gap-2 bg-red-600 text-white px-6 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-red-900/40 animate-pulse">
-               <ShieldAlert size={16} /> Credit Violation: Immediate Action Required
-            </div>
-          )}
+          <div className="flex items-center gap-3">
+             <button 
+                onClick={() => handleDeletePartner(selectedBuyer.id, selectedBuyer.shopName)}
+                className="flex items-center gap-2 bg-red-50 text-red-600 px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-600 hover:text-white transition-all border border-red-100"
+              >
+                <Trash2 size={16} /> Delete Partner
+              </button>
+            {isOverLimit && (
+              <div className="flex items-center gap-2 bg-red-600 text-white px-6 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-red-900/40 animate-pulse">
+                 <ShieldAlert size={16} /> Credit Violation
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* LEFT COLUMN: Profile & Action */}
+          {/* LEFT COLUMN */}
           <div className="lg:col-span-4 space-y-6">
             <div className={`p-8 rounded-[3rem] shadow-sm border transition-all duration-500 ${isOverLimit ? 'bg-red-50 border-red-200' : 'bg-white border-slate-100'}`}>
               <div className={`w-24 h-24 rounded-[2.5rem] flex items-center justify-center mx-auto mb-6 text-3xl font-black shadow-inner ${isOverLimit ? 'bg-red-600 text-white shadow-red-900/20' : 'bg-blue-600 text-white shadow-blue-900/20'}`}>
@@ -261,22 +303,8 @@ const CreditManagement: React.FC<CreditManagementProps> = ({ buyers, transaction
                    <MapPin size={16} className="text-red-400" />
                    <span>{selectedBuyer.location}</span>
                 </div>
-                <div className="flex flex-col items-center gap-1">
-                  <p className="text-sm font-bold text-slate-600">{selectedBuyer.phone}</p>
-                  <div className="flex items-center gap-2 text-emerald-600">
-                    <MessageCircle size={14} fill="currentColor" />
-                    <p className="text-[10px] font-black uppercase tracking-widest">{selectedBuyer.whatsappNumber}</p>
-                  </div>
-                </div>
               </div>
 
-              {selectedBuyer.remarks && (
-                <div className="mt-6 p-4 bg-slate-50 rounded-2xl border border-slate-100 italic text-[11px] text-slate-500 flex gap-3">
-                   <StickyNote size={16} className="text-slate-400 flex-shrink-0" />
-                   <p>{selectedBuyer.remarks}</p>
-                </div>
-              )}
-              
               <div className="mt-8 pt-8 border-t border-slate-200/50 space-y-5">
                 <div>
                   <div className="flex justify-between items-center text-xs font-black uppercase tracking-widest text-slate-500 mb-2">
@@ -300,13 +328,12 @@ const CreditManagement: React.FC<CreditManagementProps> = ({ buyers, transaction
 
               <button 
                 onClick={() => sendWhatsAppReminder(selectedBuyer)}
-                className={`w-full mt-8 py-4 rounded-2xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-xl ${isOverLimit ? 'bg-red-600 text-white shadow-red-900/20' : 'bg-emerald-50 text-white shadow-emerald-500/20 hover:bg-emerald-600'}`}
+                className={`w-full mt-8 py-4 rounded-2xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-xl ${isOverLimit ? 'bg-red-600 text-white shadow-red-900/20' : 'bg-emerald-50 text-emerald-600 shadow-emerald-500/10 hover:bg-emerald-600 hover:text-white'}`}
               >
                 <MessageCircle size={16} /> Send Collection Notice
               </button>
             </div>
 
-            {/* ACTION PANEL: Record Payment or Bill */}
             <div className="bg-slate-950 text-white p-8 rounded-[3rem] shadow-2xl space-y-6">
               <div className="flex bg-white/5 p-1 rounded-2xl">
                  <button 
@@ -326,121 +353,24 @@ const CreditManagement: React.FC<CreditManagementProps> = ({ buyers, transaction
               <div className="space-y-4">
                 <div className="space-y-1.5">
                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Amount (Rs.)</label>
-                   <input 
-                    type="number"
-                    placeholder="Enter value..."
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-white font-black outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                   <input type="number" placeholder="Enter value..." value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-white font-black outline-none focus:ring-2 focus:ring-blue-500"/>
                 </div>
-
-                {actionType === 'PAYMENT' ? (
-                  <div className="space-y-1.5">
-                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Payment Method</label>
-                    <select 
-                      className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-white font-bold outline-none"
-                      value={paymentMethod}
-                      onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
-                    >
-                      {Object.values(PaymentMethod).map(m => <option key={m} value={m} className="bg-slate-900">{m}</option>)}
-                    </select>
-                  </div>
-                ) : (
-                  <div className="space-y-1.5">
-                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Manual Reference #</label>
-                    <input 
-                      type="text"
-                      placeholder="Invoice / Note #"
-                      value={reference}
-                      onChange={(e) => setReference(e.target.value)}
-                      className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-white font-bold outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                  </div>
-                )}
-
-                <div className="space-y-1.5">
-                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Attached Evidence</label>
-                  <input 
-                    type="file" 
-                    accept="image/*" 
-                    capture="environment"
-                    className="hidden" 
-                    ref={fileInputRef} 
-                    onChange={handleImageUpload} 
-                  />
-                  <button 
-                    onClick={() => fileInputRef.current?.click()}
-                    className={`w-full py-4 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-2 transition-all group/btn ${attachedImage ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-white/5 border-white/10 hover:border-white/20 text-slate-500'}`}
-                  >
-                    {attachedImage ? (
-                      <div className="flex items-center gap-2">
-                        <img src={attachedImage} className="w-8 h-8 rounded-lg object-cover border border-emerald-500/50" />
-                        <span className="text-[10px] font-black uppercase tracking-widest">Image Attached</span>
-                        <X size={14} className="hover:text-red-500" onClick={(e) => { e.stopPropagation(); setAttachedImage(null); }} />
-                      </div>
-                    ) : (
-                      <>
-                        <Camera size={20} className="group-hover/btn:scale-110 transition-transform" />
-                        <span className="text-[10px] font-black uppercase tracking-widest">Upload Bill / Receipt Photo</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-                
-                <button 
-                  onClick={handleProcessAction}
-                  className={`w-full py-5 rounded-2xl text-xs font-black uppercase tracking-[0.2em] transition-all shadow-xl active:scale-95 ${actionType === 'PAYMENT' ? 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/30' : 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/30'}`}
-                >
+                <input type="file" accept="image/*" capture="environment" className="hidden" ref={fileInputRef} onChange={handleImageUpload} />
+                <button onClick={() => fileInputRef.current?.click()} className={`w-full py-4 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-2 transition-all group/btn ${attachedImage ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-white/5 border-white/10 hover:border-white/20 text-slate-500'}`}>
+                  {attachedImage ? <span className="text-[10px] font-black uppercase tracking-widest">Image Attached</span> : <Camera size={20} />}
+                </button>
+                <button onClick={handleProcessAction} className={`w-full py-5 rounded-2xl text-xs font-black uppercase tracking-[0.2em] transition-all shadow-xl active:scale-95 ${actionType === 'PAYMENT' ? 'bg-blue-600 hover:bg-blue-500' : 'bg-indigo-600 hover:bg-indigo-500'}`}>
                   Authorize {actionType === 'PAYMENT' ? 'Settlement' : 'Invoice'}
                 </button>
               </div>
             </div>
           </div>
 
-          {/* RIGHT COLUMN: Ledger & Intelligence */}
+          {/* RIGHT COLUMN */}
           <div className="lg:col-span-8 space-y-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-               <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
-                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Branch-Wise Exposure</h4>
-                  <div className="space-y-4">
-                    {exposure.map(([branch, amount]) => (
-                       <div key={branch} className="flex justify-between items-center group">
-                          <div className="flex items-center gap-3">
-                             <div className="w-2 h-2 rounded-full bg-blue-500 group-hover:scale-150 transition-transform"></div>
-                             <span className="text-xs font-bold text-slate-700">{branch}</span>
-                          </div>
-                          <span className="text-sm font-black text-slate-900">Rs. {amount.toLocaleString()}</span>
-                       </div>
-                    ))}
-                    {exposure.length === 0 && <p className="text-xs text-slate-300 italic">No branch transactions</p>}
-                  </div>
-               </div>
-               <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
-                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Aging Distribution</h4>
-                  <div className="space-y-4">
-                     <div className="flex justify-between items-center">
-                        <span className="text-xs font-bold text-blue-500">Current (0-30d)</span>
-                        <span className="text-sm font-black">Rs. {aging.tier1.toLocaleString()}</span>
-                     </div>
-                     <div className="flex justify-between items-center">
-                        <span className="text-xs font-bold text-orange-400">Aging (31-60d)</span>
-                        <span className="text-sm font-black">Rs. {aging.tier2.toLocaleString()}</span>
-                     </div>
-                     <div className="flex justify-between items-center">
-                        <span className="text-xs font-bold text-red-600">Critical (61d+)</span>
-                        <span className="text-sm font-black text-red-600">Rs. {aging.tier3.toLocaleString()}</span>
-                     </div>
-                  </div>
-               </div>
-            </div>
-
             <div className="bg-white p-10 rounded-[3.5rem] shadow-sm border border-slate-100">
                 <div className="flex justify-between items-center mb-8">
-                   <h3 className="text-xl font-black text-slate-900 flex items-center gap-3">
-                      <History size={24} className="text-blue-600" />
-                      Global Master Ledger
-                   </h3>
+                   <h3 className="text-xl font-black text-slate-900 flex items-center gap-3"><History size={24} className="text-blue-600" /> Global Master Ledger</h3>
                 </div>
 
                 <div className="relative space-y-8 before:absolute before:left-6 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-100">
@@ -450,7 +380,6 @@ const CreditManagement: React.FC<CreditManagementProps> = ({ buyers, transaction
                    ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).map((activity) => {
                       const isBill = 'activityType' in activity && activity.activityType === 'BILL';
                       const act = activity as any;
-                      const hasImage = isBill ? act.billImageUrl : act.receiptImage;
                       const imageUrl = isBill ? act.billImageUrl : act.receiptImage;
                       
                       return (
@@ -460,57 +389,19 @@ const CreditManagement: React.FC<CreditManagementProps> = ({ buyers, transaction
                            </div>
                            <div className={`p-6 rounded-3xl border shadow-sm hover:shadow-md transition-all ${isBill ? 'bg-white border-slate-50' : 'bg-emerald-50/20 border-emerald-100'}`}>
                               <div className="flex justify-between items-start mb-2">
-                                 <div>
-                                    <p className="text-xs font-black text-slate-900 uppercase tracking-widest">
-                                       {isBill ? (act.id.startsWith('M-') ? 'Manual Wholesale Invoice' : 'POS Wholesale Invoice') : 'Global Settlement'}
-                                    </p>
-                                    <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">
-                                      {new Date(act.timestamp).toLocaleString()} • #{act.id.slice(0, 8).toUpperCase()}
-                                    </p>
-                                    
-                                    {hasImage ? (
-                                      <div className="mt-4 flex flex-wrap gap-2">
-                                        <button 
-                                          onClick={() => setPreviewImage(imageUrl)}
-                                          className="w-16 h-16 rounded-2xl border border-slate-200 overflow-hidden relative group/img shadow-sm hover:border-blue-500 transition-all flex-shrink-0"
-                                        >
-                                          <img src={imageUrl} className="w-full h-full object-cover opacity-80 group-hover/img:opacity-100 transition-all" />
-                                          <div className="absolute inset-0 flex items-center justify-center bg-black/5 group-hover/img:bg-transparent">
-                                            <Maximize2 size={14} className="text-white drop-shadow-md opacity-0 group-hover/img:opacity-100 transition-opacity" />
-                                          </div>
-                                        </button>
-                                        <div className="flex flex-col justify-center">
-                                           <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{isBill ? 'Bill Proof' : 'Receipt Proof'}</span>
-                                           <button 
-                                              onClick={() => setPreviewImage(imageUrl)}
-                                              className="text-[10px] font-black text-blue-600 hover:text-blue-700 uppercase flex items-center gap-1 mt-1"
-                                            >
-                                              <Eye size={12}/> View High-Res
-                                            </button>
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      <div className="mt-4">
-                                         <button 
-                                          onClick={() => {
-                                            // Feature hint: Allow retroactively adding images
-                                            fileInputRef.current?.click();
-                                            // Note: In a real app, this would update the specific entry in the DB
-                                          }}
-                                          className="flex items-center gap-2 text-[9px] font-black uppercase text-slate-400 hover:text-blue-600 border border-dashed border-slate-200 px-3 py-1.5 rounded-lg transition-all"
-                                         >
-                                            <Camera size={12} /> Link Missing Proof
-                                         </button>
-                                      </div>
+                                 <div className="flex-1">
+                                    <p className="text-xs font-black text-slate-900 uppercase tracking-widest">{isBill ? 'Wholesale Invoice' : 'Settlement'}</p>
+                                    <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">{new Date(act.timestamp).toLocaleString()} • #{act.id.slice(0, 8).toUpperCase()}</p>
+                                    {imageUrl && (
+                                      <button onClick={() => setPreviewImage(imageUrl)} className="mt-4 w-12 h-12 rounded-xl border border-slate-200 overflow-hidden"><img src={imageUrl} className="w-full h-full object-cover" /></button>
                                     )}
                                  </div>
-                                 <div className="text-right">
-                                    <p className={`text-lg font-black ${isBill ? 'text-slate-900' : 'text-emerald-600'}`}>
-                                       {isBill ? `Rs. ${act.totalAmount.toLocaleString()}` : `- Rs. ${act.amount.toLocaleString()}`}
-                                    </p>
-                                    <span className="inline-block px-3 py-1 bg-white rounded-full text-[9px] font-black text-slate-400 uppercase tracking-tight mt-1 border border-slate-100">
-                                       Osaka @ {act.branch}
-                                    </span>
+                                 <div className="text-right flex flex-col items-end gap-2">
+                                    <p className={`text-lg font-black ${isBill ? 'text-slate-900' : 'text-emerald-600'}`}>{isBill ? `Rs. ${act.totalAmount.toLocaleString()}` : `- Rs. ${act.amount.toLocaleString()}`}</p>
+                                    <div className="flex gap-2">
+                                       <span className="px-3 py-1 bg-white rounded-full text-[9px] font-black text-slate-400 uppercase border border-slate-100">@{act.branch}</span>
+                                       <button onClick={() => handleDeleteHistoryItem(activity)} className="p-2 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"><Trash2 size={14} /></button>
+                                    </div>
                                  </div>
                               </div>
                            </div>
@@ -521,32 +412,10 @@ const CreditManagement: React.FC<CreditManagementProps> = ({ buyers, transaction
             </div>
           </div>
         </div>
-        
-        {/* Full Image Preview Modal */}
-        {previewImage && (
-           <div 
-             className="fixed inset-0 z-[300] bg-slate-950/90 backdrop-blur-xl flex items-center justify-center p-8 animate-in fade-in duration-300"
-             onClick={() => setPreviewImage(null)}
-           >
-              <button 
-                onClick={() => setPreviewImage(null)}
-                className="absolute top-10 right-10 p-4 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all active:scale-90"
-              >
-                <X size={32} strokeWidth={1.5} />
-              </button>
-              <div 
-                className="max-w-5xl max-h-full overflow-hidden rounded-[3rem] shadow-[0_50px_100px_rgba(0,0,0,0.5)] border border-white/10 flex items-center justify-center bg-white/5"
-                onClick={(e) => e.stopPropagation()}
-              >
-                 <img src={previewImage} className="max-w-full max-h-[85vh] object-contain" />
-              </div>
-           </div>
-        )}
+        {previewImage && <div className="fixed inset-0 z-[300] bg-slate-950/90 backdrop-blur-xl flex items-center justify-center p-8" onClick={() => setPreviewImage(null)}><img src={previewImage} className="max-w-full max-h-[85vh] object-contain" /></div>}
       </div>
     );
   }
-
-  const overLimitCount = buyers.filter(b => b.currentCredit > b.creditLimit).length;
 
   return (
     <div className="space-y-8 pb-20">
@@ -555,146 +424,61 @@ const CreditManagement: React.FC<CreditManagementProps> = ({ buyers, transaction
           <h2 className="text-4xl font-black text-slate-900 tracking-tighter">Market Credit Ecosystem</h2>
           <p className="text-slate-500 font-bold text-[10px] uppercase tracking-[0.2em] mt-2">6 Branches • Unified Debt Control</p>
         </div>
-        <div className="flex gap-4">
-          <div className="bg-white px-6 py-4 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-4">
-             <div className="p-3 bg-red-50 text-red-600 rounded-2xl"><ShieldAlert size={20} /></div>
-             <div>
-                <p className="text-lg font-black text-red-600 leading-none">{overLimitCount}</p>
-                <p className="text-[8px] font-black text-slate-400 uppercase mt-1">Over-Limit Alerts</p>
-             </div>
-          </div>
-        </div>
+        <button onClick={() => setIsAddingBuyer(true)} className="px-6 py-4 bg-blue-600 rounded-2xl text-xs font-black uppercase text-white shadow-xl shadow-blue-600/30 hover:bg-blue-700 transition-all flex items-center gap-2">
+          <UserPlus size={18} /> New Partner
+        </button>
       </div>
 
       <div className="bg-white p-8 rounded-[3.5rem] shadow-sm border border-slate-100">
         <div className="flex flex-col md:flex-row items-center gap-6 mb-8">
           <div className="flex-1 relative w-full">
             <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-            <input 
-              type="text" 
-              placeholder="Query buyer identity, shop, or location across network..." 
-              className="w-full pl-14 pr-6 py-4 bg-slate-50 border-none rounded-2xl focus:ring-4 focus:ring-blue-500/10 outline-none text-sm font-semibold transition-all"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+            <input type="text" placeholder="Query partner..." className="w-full pl-14 pr-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-semibold outline-none" value={search} onChange={(e) => setSearch(e.target.value)}/>
           </div>
-          <button 
-            onClick={() => setIsAddingBuyer(true)}
-            className="px-6 py-4 bg-blue-600 rounded-2xl text-xs font-black uppercase text-white shadow-xl shadow-blue-600/30 hover:bg-blue-700 transition-all flex items-center gap-2"
-          >
-            <UserPlus size={18} /> New Partner
-          </button>
+          <div className="flex gap-2">
+            {['ALL', 'OVER', 'NEAR'].map(status => (
+              <button key={status} onClick={() => setStatusFilter(status as any)} className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${statusFilter === status ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-400'}`}>{status}</button>
+            ))}
+          </div>
         </div>
 
-        {/* Filter Strip */}
-        <div className="flex flex-wrap items-center gap-3 mb-10 pb-4 border-b border-slate-50">
-           <div className="flex items-center gap-2 pr-4 border-r border-slate-100 mr-2">
-              <Filter size={14} className="text-slate-400" />
-              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Credit Status</span>
-           </div>
-           <button 
-            onClick={() => setStatusFilter('ALL')}
-            className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${statusFilter === 'ALL' ? 'bg-slate-900 text-white shadow-md' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}
-           >
-             All Partners
-           </button>
-           <button 
-            onClick={() => setStatusFilter('OVER')}
-            className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${statusFilter === 'OVER' ? 'bg-red-600 text-white shadow-md' : 'bg-red-50 text-red-600 hover:bg-red-100'}`}
-           >
-             Over-Limit
-           </button>
-           <button 
-            onClick={() => setStatusFilter('NEAR')}
-            className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${statusFilter === 'NEAR' ? 'bg-amber-500 text-white shadow-md' : 'bg-amber-50 text-amber-600 hover:bg-amber-100'}`}
-           >
-             Near-Limit (&gt;80%)
-           </button>
-           <button 
-            onClick={() => setStatusFilter('HEALTHY')}
-            className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${statusFilter === 'HEALTHY' ? 'bg-emerald-600 text-white shadow-md' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`}
-           >
-             Healthy Credit
-           </button>
-        </div>
-
-        <div className="overflow-x-auto scrollbar-hide">
+        <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
               <tr className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] bg-slate-50/50">
-                <th className="px-10 py-5">Partner Profile</th>
-                <th className="px-10 py-5">Location</th>
-                <th className="px-10 py-5">Global Exposure</th>
+                <th className="px-10 py-5">Partner</th>
+                <th className="px-10 py-5">Exposure</th>
                 <th className="px-10 py-5 text-right">Operations</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {filteredBuyers.map(buyer => {
-                const utilization = (buyer.currentCredit / (buyer.creditLimit || 1));
-                const isOverLimit = utilization > 1;
-                const isNearLimit = utilization > 0.8 && utilization <= 1;
-                
-                return (
-                  <tr key={buyer.id} className="group hover:bg-slate-50/70 transition-colors">
-                    <td className="px-10 py-8">
-                      <div className="flex items-center gap-4">
-                        <div className={`w-14 h-14 rounded-[1.5rem] flex items-center justify-center font-black text-xl shadow-inner transition-transform group-hover:scale-110 ${isOverLimit ? 'bg-red-600 text-white' : isNearLimit ? 'bg-amber-500 text-white' : 'bg-blue-50 text-blue-600'}`}>
-                          {buyer.shopName.charAt(0)}
-                        </div>
-                        <div>
-                          <p className="text-sm font-black text-slate-900 leading-tight">{buyer.shopName}</p>
-                          <p className="text-[10px] text-slate-400 font-bold uppercase mt-1 tracking-tighter flex items-center gap-1">
-                            {buyer.contactName} • [{buyer.osakaId}]
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-10 py-8">
-                       <div className="flex items-center gap-2 text-slate-500">
-                          <MapPin size={12} className="text-slate-300" />
-                          <span className="text-xs font-medium">{buyer.location}</span>
-                       </div>
-                    </td>
-                    <td className="px-10 py-8">
-                      <div className="w-64">
-                        <div className="flex justify-between text-[9px] mb-2 font-black uppercase tracking-widest">
-                          <span className="text-slate-400">Limit: Rs. {buyer.creditLimit.toLocaleString()}</span>
-                          <span className={isOverLimit ? 'text-red-600' : isNearLimit ? 'text-amber-600' : 'text-blue-600'}>
-                            Rs. {buyer.currentCredit.toLocaleString()}
-                          </span>
-                        </div>
-                        <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden border border-slate-50">
-                          <div 
-                            className={`h-full transition-all duration-1000 ${isOverLimit ? 'bg-red-600' : isNearLimit ? 'bg-amber-500' : 'bg-blue-600'}`}
-                            style={{ width: `${Math.min(100, utilization * 100)}%` }}
-                          />
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-10 py-8 text-right">
-                      <button 
-                        onClick={() => setSelectedBuyerId(buyer.id)}
-                        className={`p-3 rounded-2xl transition-all shadow-sm ${isOverLimit ? 'bg-red-600 text-white' : isNearLimit ? 'bg-amber-500 text-white' : 'bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white'}`}
-                      >
-                        <ExternalLink size={18} />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-              {filteredBuyers.length === 0 && (
-                <tr>
-                   <td colSpan={4} className="py-20 text-center opacity-20 italic text-xs uppercase font-black tracking-widest">
-                      No matching partners found
-                   </td>
+              {filteredBuyers.map(buyer => (
+                <tr key={buyer.id} className="group hover:bg-slate-50/70 transition-colors">
+                  <td className="px-10 py-8">
+                    <div className="flex items-center gap-4">
+                      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black ${buyer.currentCredit > buyer.creditLimit ? 'bg-red-600 text-white' : 'bg-blue-50 text-blue-600'}`}>{buyer.shopName.charAt(0)}</div>
+                      <div><p className="text-sm font-black text-slate-900">{buyer.shopName}</p><p className="text-[10px] text-slate-400 font-bold">{buyer.osakaId}</p></div>
+                    </div>
+                  </td>
+                  <td className="px-10 py-8">
+                    <div className="w-48">
+                      <div className="flex justify-between text-[9px] mb-2 font-black uppercase tracking-widest"><span className="text-slate-400">Limit: Rs. {buyer.creditLimit.toLocaleString()}</span><span className={buyer.currentCredit > buyer.creditLimit ? 'text-red-600' : 'text-blue-600'}>Rs. {buyer.currentCredit.toLocaleString()}</span></div>
+                      <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden"><div className={`h-full ${buyer.currentCredit > buyer.creditLimit ? 'bg-red-600' : 'bg-blue-600'}`} style={{ width: `${Math.min(100, (buyer.currentCredit / buyer.creditLimit) * 100)}%` }}/></div>
+                    </div>
+                  </td>
+                  <td className="px-10 py-8 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <button onClick={() => handleDeletePartner(buyer.id, buyer.shopName)} className="p-3 bg-red-50 text-red-400 rounded-xl hover:bg-red-600 hover:text-white transition-all"><Trash2 size={16} /></button>
+                      <button onClick={() => setSelectedBuyerId(buyer.id)} className="p-3 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><ExternalLink size={16} /></button>
+                    </div>
+                  </td>
                 </tr>
-              )}
+              ))}
             </tbody>
           </table>
         </div>
       </div>
-
-      {/* New Partner Modal */}
+      {/* New Partner Modal Logic Kept */}
       {isAddingBuyer && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-300">
            <div className="bg-white w-full max-w-xl rounded-[3rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-500">

@@ -1,23 +1,24 @@
-
 import { Transaction, Expense, Buyer, Seller, Cheque, Item, AuditLog, WhatsAppLog } from '../types';
 
 /**
- * OSAKA ERP - CLOUD DATABASE CONFIGURATION
- * Connected to: Neon PostgreSQL (AWS US-East-1)
- * Endpoint: ep-quiet-salad-ahw34wtc-pooler
+ * OSAKA ERP - NEON CLOUD DATA SERVICE
+ * High-performance REST bridge for global ledger synchronization.
  */
 
-const NEON_DB_CONFIG = {
-  host: 'ep-quiet-salad-ahw34wtc-pooler.c-3.us-east-1.aws.neon.tech',
-  user: 'neondb_owner',
-  database: 'neondb',
-  password: 'npg_Dn6KBwLjz7Ar',
-  port: 5432,
-  ssl: true,
-  url: 'postgresql://neondb_owner:npg_Dn6KBwLjz7Ar@ep-quiet-salad-ahw34wtc-pooler.c-3.us-east-1.aws.neon.tech/neondb?sslmode=require'
-};
+const API_BASE_URL = 'https://ep-quiet-salad-ahw34wtc.apirest.c-3.us-east-1.aws.neon.tech/neondb/rest/v1';
+const AUTH_TOKEN = 'npg_Dn6KBwLjz7Ar'; // Authorized Neon Identity Key
 
-const STORAGE_KEY = 'osaka_erp_cloud_data';
+// Mapping frontend state keys to database table names
+const TABLE_MAP: Record<string, string> = {
+  transactions: 'transactions',
+  expenses: 'expenses',
+  buyers: 'buyers',
+  suppliers: 'sellers',
+  cheques: 'cheques',
+  items: 'items',
+  auditLogs: 'audit_logs',
+  whatsappLogs: 'whatsapp_logs'
+};
 
 export interface CloudData {
   transactions: Transaction[];
@@ -32,48 +33,84 @@ export interface CloudData {
 
 export const dbService = {
   /**
-   * Loads global state from the Cloud Ledger.
-   * Note: In a production environment, this would call your serverless API
-   * which queries the Neon DB using the credentials above.
+   * Performs a global handshake with the Neon Cloud Ledger.
+   * Reconstructs system state from distributed tables.
    */
   async loadAllData(): Promise<Partial<CloudData>> {
-    console.log(`Osaka Cloud: Initializing handshake with ${NEON_DB_CONFIG.host}...`);
+    console.debug(`Osaka Bridge: Handshaking with Neon Node...`);
     
-    // Simulate high-security SSL handshake with Neon
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    const local = localStorage.getItem(STORAGE_KEY);
-    if (local) {
-      try {
-        const data = JSON.parse(local);
-        console.log("Osaka Cloud: Local Mirror synchronized with Neon Master.");
-        return data;
-      } catch (e) {
-        console.error("Osaka Cloud: Sync Mirror Corrupted", e);
-        return {};
-      }
+    try {
+      const endpoints = Object.entries(TABLE_MAP);
+      
+      const results = await Promise.all(
+        endpoints.map(async ([stateKey, tableName]) => {
+          const response = await fetch(`${API_BASE_URL}/${tableName}`, {
+            headers: {
+              'Authorization': `Bearer ${AUTH_TOKEN}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          if (!response.ok) {
+            console.warn(`Osaka Bridge: Table ${tableName} unavailable. Status: ${response.status}`);
+            return [stateKey, []];
+          }
+          
+          const data = await response.json();
+          return [stateKey, data];
+        })
+      );
+
+      const consolidatedData = Object.fromEntries(results);
+      console.log("Osaka Bridge: Global Ledger reconstructed successfully.");
+      
+      // Also update local cache as a fall-back mirror
+      localStorage.setItem('osaka_erp_cloud_data', JSON.stringify(consolidatedData));
+      
+      return consolidatedData;
+    } catch (error) {
+      console.error("Osaka Bridge: Handshake failed. Reverting to local mirror.", error);
+      const local = localStorage.getItem('osaka_erp_cloud_data');
+      return local ? JSON.parse(local) : {};
     }
-    return {};
   },
 
   /**
-   * Synchronizes changes to the Neon PostgreSQL instance.
+   * Synchronizes terminal state to the Neon Master Node.
+   * Performs bulk UPSERT operations to maintain data integrity across branches.
    */
   async syncData(data: CloudData): Promise<boolean> {
-    // In a live app, you would send this to your backend:
-    // const response = await fetch('/api/sync', { 
-    //   method: 'POST', 
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify({ config: NEON_DB_CONFIG, data }) 
-    // });
-    
     try {
-      // For this bridge demo, we maintain the structure in local mirror
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      console.log(`Osaka Cloud Sync: Verified with Node ${NEON_DB_CONFIG.host.split('-')[1].toUpperCase()}`);
-      return true;
-    } catch (e) {
-      console.error("Osaka Cloud Sync: Failed", e);
+      const endpoints = Object.entries(TABLE_MAP);
+      
+      const syncPromises = endpoints.map(async ([stateKey, tableName]) => {
+        const payload = (data as any)[stateKey];
+        if (!payload || !Array.isArray(payload) || payload.length === 0) return true;
+
+        const response = await fetch(`${API_BASE_URL}/${tableName}`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${AUTH_TOKEN}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'resolution=merge-duplicates' // UPSERT behavior: Insert or Update on conflict
+          },
+          body: JSON.stringify(payload)
+        });
+
+        return response.ok;
+      });
+
+      const results = await Promise.all(syncPromises);
+      const allSuccess = results.every(Boolean);
+
+      if (allSuccess) {
+        localStorage.setItem('osaka_erp_cloud_data', JSON.stringify(data));
+        console.debug("Osaka Bridge: Node synchronization verified.");
+      }
+
+      return allSuccess;
+    } catch (error) {
+      console.error("Osaka Bridge: Synchronization error.", error);
       return false;
     }
   }

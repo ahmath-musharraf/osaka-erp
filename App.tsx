@@ -201,13 +201,67 @@ const App: React.FC = () => {
           />
         );
       case 'buyers':
-        return <CreditManagement buyers={buyers} transactions={transactions} selectedBranch={selectedBranch} onUpdateBuyer={(b) => setBuyers(prev => prev.map(old => old.id === b.id ? b : old))} onAddBuyer={(b) => setBuyers(prev => [...prev, b])} onTransaction={handleTransaction} />;
+        return (
+          <CreditManagement 
+            buyers={buyers} 
+            transactions={transactions} 
+            selectedBranch={selectedBranch} 
+            onUpdateBuyer={(b) => setBuyers(prev => prev.map(old => old.id === b.id ? b : old))} 
+            onAddBuyer={(b) => setBuyers(prev => [...prev, b])} 
+            onDeleteBuyer={(id) => { 
+              setBuyers(prev => prev.filter(b => b.id !== id)); 
+              logAction('Buyer Deletion', `ID: ${id}`, 'Existing Partner', 'Deleted', 'HIGH'); 
+            }}
+            onDeleteTransaction={(id) => {
+              const targetT = transactions.find(t => t.id === id);
+              if (targetT && targetT.buyerId) {
+                setBuyers(prev => prev.map(b => b.id === targetT.buyerId ? { ...b, currentCredit: Math.max(0, b.currentCredit - (targetT.totalAmount - targetT.paidAmount)) } : b));
+              }
+              setTransactions(prev => prev.filter(t => t.id !== id));
+              logAction('Transaction Deletion', `ID: ${id}`, 'Wholesale Bill', 'Deleted', 'HIGH');
+            }}
+            onDeletePayment={(buyerId, paymentId) => {
+              setBuyers(prev => prev.map(b => {
+                if (b.id === buyerId) {
+                  const p = b.payments.find(p => p.id === paymentId);
+                  return { ...b, currentCredit: b.currentCredit + (p?.amount || 0), payments: b.payments.filter(p => p.id !== paymentId) };
+                }
+                return b;
+              }));
+              logAction('Payment Deletion', `ID: ${paymentId}`, 'Buyer Settlement', 'Deleted', 'HIGH');
+            }}
+            onTransaction={handleTransaction} 
+          />
+        );
       case 'suppliers':
-        return <SupplierManagement suppliers={suppliers} selectedBranch={selectedBranch} onUpdateSupplier={(s) => setSuppliers(prev => prev.map(old => old.id === s.id ? s : old))} onAddSupplier={(s) => setSuppliers(prev => [...prev, s])} />;
+        return (
+          <SupplierManagement 
+            suppliers={suppliers} 
+            selectedBranch={selectedBranch} 
+            onUpdateSupplier={(s) => setSuppliers(prev => prev.map(old => old.id === s.id ? s : old))} 
+            onAddSupplier={(s) => setSuppliers(prev => [...prev, s])} 
+            onDeleteSupplier={(id) => {
+              setSuppliers(prev => prev.filter(s => s.id !== id));
+              logAction('Supplier Deletion', `ID: ${id}`, 'Existing Seller', 'Deleted', 'HIGH');
+            }}
+            onDeleteLedgerEntry={(supplierId, entryId) => {
+              setSuppliers(prev => prev.map(s => {
+                if (s.id === supplierId) {
+                  const entry = s.ledger.find(e => e.id === entryId);
+                  const amount = entry?.amount || 0;
+                  const newBalance = entry?.type === 'PURCHASE_BILL' ? s.balance - amount : s.balance + amount;
+                  return { ...s, balance: newBalance, ledger: s.ledger.filter(e => e.id !== entryId) };
+                }
+                return s;
+              }));
+              logAction('Ledger Entry Deletion', `ID: ${entryId}`, 'Supplier Transaction', 'Deleted', 'HIGH');
+            }}
+          />
+        );
       case 'cheques':
-        return <ChequeTracker selectedBranch={selectedBranch} cheques={cheques} onAddCheque={(c) => setCheques([...cheques, c])} onUpdateChequeStatus={(id, s) => setCheques(prev => prev.map(c => c.id === id ? {...c, status: s} : c))} onDeleteCheque={(id) => setCheques(prev => prev.filter(c => c.id !== id))} />;
+        return <ChequeTracker selectedBranch={selectedBranch} cheques={cheques} onAddCheque={(c) => setCheques([...cheques, c])} onUpdateChequeStatus={(id, s) => setCheques(prev => prev.map(c => c.id === id ? {...c, status: s} : c))} onDeleteCheque={(id) => { setCheques(prev => prev.filter(c => c.id !== id)); logAction('Cheque Deletion', `ID: ${id}`, 'Financial Instrument', 'Deleted', 'HIGH'); }} />;
       case 'expenses':
-        return <ExpenseTracker expenses={expenses} onAddExpense={(e) => setExpenses([e, ...expenses])} onDeleteExpense={(id) => setExpenses(prev => prev.filter(e => e.id !== id))} selectedBranch={selectedBranch} />;
+        return <ExpenseTracker expenses={expenses} onAddExpense={(e) => setExpenses([e, ...expenses])} onDeleteExpense={(id) => { setExpenses(prev => prev.filter(e => e.id !== id)); logAction('Expense Deletion', `ID: ${id}`, 'Daily Cost Record', 'Deleted', 'HIGH'); }} selectedBranch={selectedBranch} />;
       case 'automation':
         return <WhatsAppAutomation buyers={buyers} cheques={cheques} selectedBranch={selectedBranch} whatsappLogs={whatsappLogs} onLogMessage={(l) => setWhatsappLogs([l, ...whatsappLogs])} />;
       case 'audit':
